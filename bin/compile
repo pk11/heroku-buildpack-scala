@@ -39,6 +39,56 @@ install_java ${BUILD_DIR} ${javaVersion}
 jdk_overlay ${BUILD_DIR}
 echo "done"
 
+#install node & npm
+
+NODE_VERSION=0.10.31
+NODE_BASENAME=node-v${NODE_VERSION}-linux-x64
+NODE_ARCHIVE="http://nodejs.org/dist/v${NODE_VERSION}/${NODE_BASENAME}.tar.gz"
+
+curl -s -L -o tmp-nodejs.tar.gz $NODE_ARCHIVE
+tar -zxvf tmp-nodejs.tar.gz > /dev/null
+rm tmp-nodejs.tar.gz
+export PATH=$NODE_BASENAME/bin:$PATH
+echo "path" $PATH
+echo "which node" `which node`
+
+function indent() {
+  c='s/^/       /'
+  case $(uname) in
+    Darwin) sed -l "$c";;
+    *)      sed -u "$c";;
+  esac
+}
+
+function run_npm_install_global() {
+  package="$1"
+  echo "-----> Installing" $package
+
+  npm install -g $package 2>&1 | indent
+
+  if [ "${PIPESTATUS[*]}" != "0 0" ]; then
+    echo " !     Failed to install dependencies with npm"
+    exit 1
+  fi
+}
+
+# install dependencies with npm
+echo "-----> Installing dependencies with npm"
+for dependency in $(cat $BUILD_DIR/npm_requirements.txt)
+do
+    run_npm_install_global $dependency
+done
+echo "Dependencies installed" | indent
+
+# execute JSX transformation
+echo "Start JXS transformation"
+
+# assumed app structure: app/jsx->app/assets/javascripts/build
+/app/tmp/repo.git/$NODE_BASENAME/lib/node_modules/react-tools/bin/jsx $BUILD_DIR/app/jsx $BUILD_DIR/app/assets/javascripts/build
+
+# set node/npm for sbt-web
+export SBT_OPTS="$SBT_OPTS -Dsbt.jse.command=$NODE_BASENAME/bin/node"
+
 # home directory from perspective of SBT; we rename
 # it because otherwise the project root and $HOME
 # are the same, and by default .sbt has a (different)
@@ -77,6 +127,7 @@ SBT_URL="http://typesafe.artifactoryonline.com/typesafe/ivy-releases/org.scala-s
 ## is required - it may not be, we can run .class files or a package-war
 ## instead.
 SBT_TASKS="compile stage"
+
 
 # To enable clean compiles, configure the environment to clean:
 # $ heroku config:set SBT_CLEAN=true
